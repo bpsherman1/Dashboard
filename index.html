@@ -1,0 +1,732 @@
+import { useState, useCallback } from "react";
+
+const CATEGORIES = ["Food","Transport","Entertainment","Health","Housing","Utilities","Other"];
+const YANKEES_GAMES = [
+  { matchup:"NYY @ Giants", date:"Fri Mar 27", time:"3:35 PM CDT", opponent:"San Francisco Giants" },
+  { matchup:"NYY @ Giants", date:"Sat Mar 28", time:"6:15 PM CDT", opponent:"San Francisco Giants" },
+  { matchup:"NYY @ Mariners", date:"Mon Mar 30", time:"8:40 PM CDT", opponent:"Seattle Mariners" },
+];
+const DEFAULT_FOODS = [
+  { id:1, name:"Eggo Waffles (4)", calories:560, protein:8, fat:12, carbs:96, fiber:2, cost:2.00, category:"Breakfast", logged:true },
+  { id:2, name:"Peanut Butter (¼ jar)", calories:480, protein:20, fat:40, carbs:16, fiber:4, cost:1.75, category:"Snack", logged:true },
+  { id:3, name:"Chipotle Bowl + Chips", calories:1150, protein:52, fat:38, carbs:138, fiber:14, cost:13.00, category:"Lunch/Dinner", logged:true },
+];
+const QUICK_FOODS = [
+  { id:101, name:"RX Bar", calories:210, protein:12, fat:9, carbs:24, fiber:5, cost:3.00, category:"Snack" },
+  { id:102, name:"Chocolate Croissant", calories:270, protein:5, fat:14, carbs:33, fiber:1, cost:1.50, category:"Snack" },
+  { id:103, name:"Restaurant Meal", calories:900, protein:45, fat:35, carbs:80, fiber:6, cost:35.00, category:"Dinner" },
+  { id:104, name:"Drinks", calories:220, protein:1, fat:0, carbs:28, fiber:0, cost:10.00, category:"Drinks" },
+];
+const DAILY_TARGETS = { calories:2000, protein:50, fat:65, carbs:300, fiber:28 };
+const WEEKLY_BUDGET = [
+  {item:"Eggo Waffles (4/day)", freq:"Daily × 7", weekly:14.00},
+  {item:"Peanut Butter (¼ jar/day)", freq:"Daily × 7", weekly:12.25},
+  {item:"Chipotle Bowl + Chips", freq:"Daily × 7", weekly:91.00},
+  {item:"RX Bars", freq:"~4× / week", weekly:12.00},
+  {item:"Chocolate Croissants", freq:"~3× / week", weekly:4.50},
+  {item:"Nice Restaurant Meals", freq:"2× / week", weekly:70.00},
+  {item:"Drinks / Alcohol", freq:"~1× / week", weekly:10.00},
+];
+const BUDGET_TIPS = [
+  {icon:"🔄", text:'Swap daily Chipotle ($13) for a homemade chicken rice bowl (~$3.50). That\'s ~$66/week saved — nearly $3,400/year.'},
+  {icon:"🥚", text:"Batch-cook eggs + oatmeal instead of Eggos. More protein per dollar and keeps you fuller until lunch."},
+  {icon:"📦", text:"Buy peanut butter and Eggos in bulk at Costco — same foods, roughly 30% cheaper per unit."},
+  {icon:"🍷", text:"Restaurant spend ($70/wk) is high. Cut to 1× per week and cook one elevated meal at home instead."},
+  {icon:"💡", text:"Your current weekly food spend is ~$213.75 (~$927/mo). A healthy solo food budget is $300–400/mo. Big room to optimize."},
+];
+const MLB_LEADERS = {
+  avg:[{name:"Luis Arraez",team:"SD",val:".354"},{name:"Freddie Freeman",team:"LAD",val:".331"},{name:"Yordan Alvarez",team:"HOU",val:".319"},{name:"Paul Goldschmidt",team:"STL",val:".317"},{name:"Rafael Devers",team:"BOS",val:".306"}],
+  war:[{name:"Shohei Ohtani",team:"LAD",val:"9.1"},{name:"Mookie Betts",team:"LAD",val:"7.8"},{name:"Juan Soto",team:"NYY",val:"7.4"},{name:"Aaron Judge",team:"NYY",val:"7.2"},{name:"Wander Franco",team:"TB",val:"6.9"}],
+  hr:[{name:"Aaron Judge",team:"NYY",val:"58"},{name:"Shohei Ohtani",team:"LAD",val:"54"},{name:"Pete Alonso",team:"NYM",val:"46"},{name:"Yordan Alvarez",team:"HOU",val:"44"},{name:"Matt Olson",team:"ATL",val:"43"}],
+  era:[{name:"Gerrit Cole",team:"NYY",val:"2.63"},{name:"Spencer Strider",team:"ATL",val:"2.74"},{name:"Blake Snell",team:"SF",val:"2.89"},{name:"Zack Wheeler",team:"PHI",val:"3.01"},{name:"Sandy Alcantara",team:"MIA",val:"3.12"}],
+};
+const HABITS = ["Sleep 7–8 hrs","Reading","Eating well","Project progress"];
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07090d;--s1:#0d1117;--s2:#141b24;--s3:#1b2535;
+  --border:#1f2d40;--border2:#2a3d55;
+  --text:#ddeaf8;--muted:#4d6a88;--muted2:#2d4a66;
+  --acc:#3b9eff;--acc2:#2de8a0;--acc3:#ff5f5f;--acc4:#ffc940;--acc5:#b07dff;
+  --font:'Outfit',sans-serif;--mono:'JetBrains Mono',monospace;--head:'Syne',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font)}
+.app{max-width:980px;margin:0 auto;padding:48px 20px 100px}
+/* NAV */
+.nav{display:flex;gap:4px;background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:5px;margin-bottom:40px;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.ntab{flex-shrink:0;padding:8px 18px;border-radius:9px;border:none;background:transparent;color:var(--muted);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
+.ntab.on{background:var(--s3);color:var(--text)}
+.ntab:hover:not(.on){color:var(--text);background:var(--s2)}
+/* GREETING */
+.gtop{margin-bottom:44px}
+.gdate{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;margin-bottom:8px}
+.gtitle{font-family:var(--head);font-size:48px;font-weight:800;line-height:1.05;background:linear-gradient(130deg,var(--text) 30%,var(--acc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.gsub{font-size:13px;color:var(--muted);margin-top:6px}
+/* SEC */
+.slbl{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted2);margin-bottom:13px}
+.sec{margin-bottom:44px;animation:fadeUp .35s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+/* CARDS */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:22px 20px}
+.ctitle{font-family:var(--head);font-size:14px;font-weight:700;color:var(--acc);margin-bottom:15px;letter-spacing:.04em}
+.card2{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:16px}
+/* GRIDS */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:680px){.g2{grid-template-columns:1fr}.g4{grid-template-columns:repeat(2,1fr)}}
+/* STAT */
+.sc{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:18px 16px}
+.slb{font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:.05em}
+.sv{font-family:var(--head);font-size:28px;font-weight:800;line-height:1;margin-bottom:4px}
+.ss{font-size:11px;color:var(--muted);font-family:var(--mono)}
+/* INPUTS */
+.inp{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 13px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .2s}
+.inp:focus{border-color:var(--acc)}
+.inp::placeholder{color:var(--muted)}
+.sel{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;cursor:pointer}
+.row{display:flex;gap:8px;margin-bottom:10px;align-items:center}
+/* BUTTONS */
+.btn{background:var(--acc);color:#04080f;border:none;border-radius:8px;padding:10px 18px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn:hover{opacity:.85;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btng{background:var(--acc2);color:#04080f}
+.btnr{background:var(--acc3);color:#fff}
+.btnh{background:var(--s2);color:var(--text);border:1px solid var(--border)}
+.btnh:hover{border-color:var(--border2);background:var(--s3)}
+.btnsm{padding:6px 12px;font-size:12px}
+.btnfl{width:100%}
+.del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;line-height:1;padding:0 3px;transition:color .15s}
+.del:hover{color:var(--acc3)}
+/* BARS */
+.bw{height:6px;background:var(--s3);border-radius:3px;overflow:hidden;margin-bottom:4px}
+.bf{height:100%;border-radius:3px;transition:width .5s ease}
+/* NUTRIENT */
+.nr{margin-bottom:14px}
+.nh{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px}
+.nnm{font-weight:500}
+.nvl{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.nbw{height:8px;background:var(--s3);border-radius:4px;overflow:hidden}
+.nbf{height:100%;border-radius:4px;transition:width .6s ease}
+/* FOOD ITEMS */
+.fi{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.fi:last-child{border-bottom:none}
+.fbdg{font-size:10px;padding:2px 8px;border-radius:10px;font-family:var(--mono);font-weight:500;background:var(--s3);color:var(--muted)}
+.fcal{font-family:var(--mono);font-size:12px;color:var(--acc4);margin-right:6px}
+.fcost{font-family:var(--mono);font-size:11px;color:var(--acc2)}
+/* NYY */
+.nyyh{background:linear-gradient(135deg,#0a1f3c,#081528);border-radius:14px 14px 0 0;padding:20px;display:flex;align-items:center;gap:14px;border:1px solid var(--border);border-bottom:none}
+.nyyl{font-family:var(--head);font-size:34px;font-weight:800;color:#c8a84b;text-shadow:0 0 20px #c8a84b33}
+.nyyn{font-family:var(--head);font-size:20px;font-weight:700}
+.nyyr{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+.nyyb{background:var(--s1);border:1px solid var(--border);border-top:none;border-radius:0 0 14px 14px;padding:20px;margin-bottom:20px}
+.gr{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+.gr:last-child{border-bottom:none}
+.gdt{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:3px}
+.gm{font-size:14px;font-weight:600}
+.gt{font-family:var(--mono);font-size:12px;color:var(--acc)}
+.lbtn{font-size:11px;padding:5px 10px;border-radius:6px;background:var(--s3);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-family:var(--font);transition:all .15s}
+.lbtn:hover{border-color:var(--acc);color:var(--acc)}
+.lpanel{background:var(--s2);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;margin-top:10px}
+.lrow{font-size:12px;padding:5px 0;border-bottom:1px solid var(--border);font-family:var(--mono);display:flex;gap:12px}
+.lrow:last-child{border-bottom:none}
+.lnum{color:var(--muted);width:16px;flex-shrink:0}
+.lpos{color:var(--acc);width:30px;flex-shrink:0}
+/* LEADERBOARD */
+.lbg{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(max-width:580px){.lbg{grid-template-columns:1fr}}
+.lbc{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:18px}
+.lbt{font-family:var(--head);font-size:13px;font-weight:700;margin-bottom:12px;letter-spacing:.04em;display:flex;align-items:center;gap:8px}
+.lbr{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.lbr:last-child{border-bottom:none}
+.lbrk{font-family:var(--mono);font-size:11px;color:var(--muted);width:18px;flex-shrink:0}
+.lbname{flex:1;font-size:13px;font-weight:500}
+.lbteam{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.lbval{font-family:var(--mono);font-size:14px;font-weight:500}
+/* HABITS */
+.hr{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--border);cursor:pointer}
+.hr:last-child{border-bottom:none}
+.hc{width:22px;height:22px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.hc.on{border-color:var(--acc2);background:var(--acc2)}
+.hck{color:#04080f;font-size:11px;font-weight:800}
+.hn{flex:1;font-size:14px}
+.hn.on{text-decoration:line-through;color:var(--muted)}
+.hbtn{font-size:11px;padding:5px 10px;border-radius:6px;background:var(--s2);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-family:var(--font);transition:all .15s}
+.hbtn:hover{border-color:var(--acc2);color:var(--acc2)}
+.hbtn.on{border-color:var(--acc2);color:var(--acc2)}
+/* TASKS */
+.tr2{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.tr2:last-child{border-bottom:none}
+.tc{width:18px;height:18px;border-radius:5px;border:2px solid var(--border2);flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.tc.on{background:var(--acc);border-color:var(--acc)}
+.tl{flex:1;font-size:13px}
+.tl.on{text-decoration:line-through;color:var(--muted)}
+/* CHIPS */
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:12px;margin:4px 4px 4px 0;cursor:pointer;transition:all .15s}
+.chip.on{border-color:var(--acc2);color:var(--acc2);text-decoration:line-through}
+.chipx{color:var(--muted);font-size:14px;margin-left:2px}
+.chipx:hover{color:var(--acc3)}
+/* ANALYSIS */
+.abox{background:linear-gradient(135deg,#0b1e38,#0e1a2c);border:1px solid var(--acc);border-radius:12px;padding:20px;margin-bottom:14px;position:relative;overflow:hidden}
+.abox::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--acc),var(--acc2),var(--acc5))}
+.atxt{font-size:13px;line-height:1.75;color:#9dc8e8}
+.trow{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)}
+.trow:last-child{border-bottom:none}
+.tico{font-size:16px;flex-shrink:0;margin-top:1px}
+.ttxt{font-size:13px;line-height:1.55;color:var(--text)}
+/* BUDGET */
+.bdgr{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.bdgr:last-child{border-bottom:none}
+.bdgf{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.bdgc{font-family:var(--mono);font-size:13px;color:var(--acc4)}
+/* NEWS */
+.ni{padding:12px 0;border-bottom:1px solid var(--border)}
+.ni:last-child{border-bottom:none}
+.nhl{font-size:13px;font-weight:500;line-height:1.5;margin-bottom:4px}
+.nm{font-size:11px;color:var(--muted);font-family:var(--mono)}
+/* CREDIT */
+.crbig{font-family:var(--head);font-size:44px;font-weight:800}
+.crbdg{font-size:11px;padding:4px 12px;border-radius:20px;font-family:var(--mono);font-weight:600;display:inline-block;margin-left:10px;vertical-align:middle}
+/* MISC */
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.empty{font-size:13px;color:var(--muted);font-style:italic;padding:6px 0 10px}
+`;
+
+function getGreeting(){const h=new Date().getHours();return h<12?"Good morning":h<17?"Good afternoon":"Good evening"}
+function fmtDate(){return new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}
+function pctOf(v,m){return Math.min(100,Math.round((v/m)*100))}
+function creditColor(s){
+  if(s>=800)return{label:"Exceptional",bg:"#0b2318",color:"#2de8a0"};
+  if(s>=740)return{label:"Very Good",bg:"#0b2018",color:"#5dddb0"};
+  if(s>=670)return{label:"Good",bg:"#0b2010",color:"#7de880"};
+  if(s>=580)return{label:"Fair",bg:"#281c08",color:"#ffc940"};
+  return{label:"Poor",bg:"#280e0e",color:"#ff5f5f"};
+}
+
+export default function Dashboard(){
+  const [tab,setTab]=useState("overview");
+  const TABS=[{id:"overview",label:"Overview"},{id:"finance",label:"Finance"},{id:"nutrition",label:"Nutrition & Budget"},{id:"baseball",label:"⚾ Yankees"},{id:"habits",label:"Habits & Tasks"},{id:"news",label:"News"}];
+
+  // Finance
+  const [income,setIncome]=useState(1000);
+  const [expenses,setExpenses]=useState([]);
+  const [expDesc,setExpDesc]=useState("");
+  const [expAmt,setExpAmt]=useState("");
+  const [expCat,setExpCat]=useState("Food");
+  const [creditScore,setCreditScore]=useState(705);
+  const [creditInput,setCreditInput]=useState("705");
+  const [savingsGoals,setSavingsGoals]=useState([]);
+  const [goalName,setGoalName]=useState("");
+  const [goalSaved,setGoalSaved]=useState("");
+  const [goalTarget,setGoalTarget]=useState("");
+  const [editingIncome,setEditingIncome]=useState(false);
+  const [incomeInput,setIncomeInput]=useState("1000");
+  const [finAnalysis,setFinAnalysis]=useState(null);
+  const [finLoading,setFinLoading]=useState(false);
+
+  // Nutrition
+  const [foods,setFoods]=useState(DEFAULT_FOODS);
+  const [customFood,setCustomFood]=useState({name:"",calories:"",protein:"",fat:"",carbs:"",cost:""});
+
+  // Baseball
+  const [lineups,setLineups]=useState({});
+  const [lineupLoading,setLineupLoading]=useState({});
+  const [openLineup,setOpenLineup]=useState({});
+
+  // Habits
+  const [doneHabits,setDoneHabits]=useState({});
+  const [tasks,setTasks]=useState([]);
+  const [taskInput,setTaskInput]=useState("");
+  const [doneTasks,setDoneTasks]=useState({});
+  const [weeklyGoals,setWeeklyGoals]=useState([]);
+  const [weeklyInput,setWeeklyInput]=useState("");
+  const [doneGoals,setDoneGoals]=useState({});
+
+  // News
+  const [news,setNews]=useState([]);
+  const [newsLoading,setNewsLoading]=useState(false);
+  const [newsError,setNewsError]=useState(false);
+
+  // Derived
+  const spent=expenses.reduce((s,e)=>s+e.amount,0);
+  const remaining=income-spent;
+  const ci=creditColor(creditScore);
+  const cpct=((creditScore-300)/550)*100;
+  const loggedFoods=foods.filter(f=>f.logged);
+  const totalCals=loggedFoods.reduce((s,f)=>s+f.calories,0);
+  const totalProtein=loggedFoods.reduce((s,f)=>s+(f.protein||0),0);
+  const totalFat=loggedFoods.reduce((s,f)=>s+(f.fat||0),0);
+  const totalCarbs=loggedFoods.reduce((s,f)=>s+(f.carbs||0),0);
+  const totalFiber=loggedFoods.reduce((s,f)=>s+(f.fiber||0),0);
+  const calPct=pctOf(totalCals,DAILY_TARGETS.calories);
+  const weeklyFoodCost=WEEKLY_BUDGET.reduce((s,i)=>s+i.weekly,0);
+  const ringColor=calPct>110?"#ff5f5f":calPct>85?"#ffc940":"#2de8a0";
+  const R=52,circ=2*Math.PI*R,calOffset=circ*(1-Math.min(calPct,100)/100);
+
+  // Actions
+  const addExpense=()=>{const a=parseFloat(expAmt);if(!expDesc.trim()||isNaN(a)||a<=0)return;setExpenses(p=>[...p,{id:Date.now(),desc:expDesc,amount:a,cat:expCat}]);setExpDesc("");setExpAmt("")};
+  const addGoal=()=>{const sv=parseFloat(goalSaved),tg=parseFloat(goalTarget);if(!goalName.trim()||isNaN(sv)||isNaN(tg)||tg<=0)return;setSavingsGoals(p=>[...p,{id:Date.now(),name:goalName,saved:sv,target:tg}]);setGoalName("");setGoalSaved("");setGoalTarget("")};
+  const addTask=()=>{if(!taskInput.trim())return;setTasks(p=>[...p,{id:Date.now(),label:taskInput}]);setTaskInput("")};
+  const addWeekly=()=>{if(!weeklyInput.trim())return;setWeeklyGoals(p=>[...p,{id:Date.now(),label:weeklyInput}]);setWeeklyInput("")};
+  const logQuick=(f)=>setFoods(p=>[...p,{...f,id:Date.now(),logged:true}]);
+  const toggleFood=(id)=>setFoods(p=>p.map(f=>f.id===id?{...f,logged:!f.logged}:f));
+  const removeFood=(id)=>setFoods(p=>p.filter(f=>f.id!==id));
+  const addCustom=()=>{const c=parseInt(customFood.calories);if(!customFood.name||isNaN(c))return;setFoods(p=>[...p,{id:Date.now(),name:customFood.name,calories:c,protein:parseInt(customFood.protein)||0,fat:parseInt(customFood.fat)||0,carbs:parseInt(customFood.carbs)||0,fiber:0,cost:parseFloat(customFood.cost)||0,category:"Custom",logged:true}]);setCustomFood({name:"",calories:"",protein:"",fat:"",carbs:"",cost:""})};
+
+  const fetchLineup=useCallback(async(key,opp)=>{
+    if(lineups[key]){setOpenLineup(p=>({...p,[key]:!p[key]}));return}
+    setLineupLoading(p=>({...p,[key]:true}));setOpenLineup(p=>({...p,[key]:true}));
+    try{
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:`Search for the projected or expected New York Yankees starting lineup for their upcoming game against the ${opp} in March/April 2026. Return ONLY a JSON array of 9 objects: [{order,name,position}]. No markdown, no preamble, nothing else.`}]})});
+      const data=await res.json();
+      const text=data.content.filter(b=>b.type==="text").map(b=>b.text).join("");
+      const clean=text.replace(/```json|```/g,"").trim();
+      setLineups(p=>({...p,[key]:JSON.parse(clean)}));
+    }catch{setLineups(p=>({...p,[key]:[{order:1,name:"Could not fetch lineup",position:"—"}]}))}
+    setLineupLoading(p=>({...p,[key]:false}));
+  },[lineups]);
+
+  const fetchFinAnalysis=useCallback(async()=>{
+    setFinLoading(true);
+    const rate=income>0?Math.round(((income-spent)/income)*100):0;
+    try{
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:600,messages:[{role:"user",content:`Monthly take-home: $${income}. Spent this month: $${spent.toFixed(2)}. Savings rate: ${rate}%. Credit score: ${creditScore}. Goals: ${savingsGoals.map(g=>`${g.name}: $${g.saved}/$${g.target}`).join(", ")||"none"}. Write 2-3 sentences of personalized analysis then list 3 specific actionable tips. JSON only: {analysis:string, tips:[string,string,string]}. No markdown.`}]})});
+      const data=await res.json();
+      const text=data.content.map(b=>b.text||"").join("");
+      setFinAnalysis(JSON.parse(text.replace(/```json|```/g,"").trim()));
+    }catch{setFinAnalysis({analysis:"Unable to load analysis. Try again.",tips:[]})}
+    setFinLoading(false);
+  },[income,spent,creditScore,savingsGoals]);
+
+  const fetchNews=useCallback(async()=>{
+    setNewsLoading(true);setNewsError(false);
+    try{
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:`Search for the top 5 breaking news headlines right now. Return ONLY a JSON array: [{headline,source,time}]. No markdown.`}]})});
+      const data=await res.json();
+      const text=data.content.filter(b=>b.type==="text").map(b=>b.text).join("");
+      setNews(JSON.parse(text.replace(/```json|```/g,"").trim()).slice(0,5));
+    }catch{setNewsError(true)}
+    setNewsLoading(false);
+  },[]);
+
+  return(
+    <>
+      <style>{CSS}</style>
+      <div className="app">
+        <div className="gtop">
+          <div className="gdate">{fmtDate()}</div>
+          <div className="gtitle">{getGreeting()}</div>
+          <div className="gsub">Your personal command center — finances, nutrition, baseball & more.</div>
+        </div>
+
+        <nav className="nav">
+          {TABS.map(t=><button key={t.id} className={`ntab${tab===t.id?" on":""}`} onClick={()=>setTab(t.id)}>{t.label}</button>)}
+        </nav>
+
+        {/* ─── OVERVIEW ─── */}
+        {tab==="overview"&&(
+          <div className="sec">
+            <div className="slbl">Quick glance</div>
+            <div className="g4" style={{marginBottom:14}}>
+              <div className="sc"><div className="slb">Take-home</div><div className="sv" style={{color:"var(--acc)"}}>${income.toLocaleString()}</div><div className="ss">monthly</div></div>
+              <div className="sc"><div className="slb">Remaining</div><div className="sv" style={{color:remaining<0?"var(--acc3)":"var(--acc2)"}}>${remaining.toFixed(0)}</div><div className="ss">{income>0?Math.round((remaining/income)*100):0}% left</div></div>
+              <div className="sc"><div className="slb">Today's calories</div><div className="sv" style={{color:ringColor}}>{totalCals}</div><div className="ss">of {DAILY_TARGETS.calories} goal</div></div>
+              <div className="sc"><div className="slb">Habits done</div><div className="sv">{Object.values(doneHabits).filter(Boolean).length}/{HABITS.length}</div><div className="ss">today</div></div>
+            </div>
+            <div className="g2">
+              <div className="card">
+                <div className="ctitle">Today's habits</div>
+                {HABITS.map(h=>(
+                  <div className="hr" key={h} onClick={()=>setDoneHabits(p=>({...p,[h]:!p[h]}))}>
+                    <div className={`hc${doneHabits[h]?" on":""}`}>{doneHabits[h]&&<span className="hck">✓</span>}</div>
+                    <span className={`hn${doneHabits[h]?" on":""}`}>{h}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="card">
+                <div className="ctitle">Next game</div>
+                <div style={{fontFamily:"var(--head)",fontSize:22,fontWeight:800,color:"#c8a84b",marginBottom:8}}>NYY @ SF Giants</div>
+                <div style={{fontFamily:"var(--mono)",fontSize:12,color:"var(--muted)",marginBottom:6}}>Today · Mar 27 · 3:35 PM CDT</div>
+                <div style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--acc2)",marginBottom:16}}>Oracle Park, San Francisco</div>
+                <div style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--muted)",marginBottom:14}}>2026 record: <span style={{color:"var(--acc2)"}}>1–0</span> · Scored 15 runs last 2 games</div>
+                <button className="btn btnsm" onClick={()=>setTab("baseball")}>Full schedule & lineup →</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── FINANCE ─── */}
+        {tab==="finance"&&(
+          <div className="sec">
+            <div className="slbl">Finance</div>
+            <div className="g4" style={{marginBottom:14}}>
+              <div className="sc" style={{cursor:"pointer"}} onClick={()=>{setIncomeInput(String(income));setEditingIncome(true)}}>
+                <div className="slb">Monthly income</div>
+                {editingIncome?(
+                  <input className="inp" style={{fontSize:18,padding:"4px 8px"}} value={incomeInput}
+                    onChange={e=>setIncomeInput(e.target.value)}
+                    onBlur={()=>{const v=parseFloat(incomeInput);if(!isNaN(v)&&v>=0)setIncome(v);setEditingIncome(false)}}
+                    onKeyDown={e=>{if(e.key==="Enter"){const v=parseFloat(incomeInput);if(!isNaN(v)&&v>=0)setIncome(v);setEditingIncome(false)}}}
+                    autoFocus/>
+                ):<div className="sv" style={{color:"var(--acc)"}}>${income.toLocaleString()}</div>}
+                <div className="ss">tap to edit</div>
+              </div>
+              <div className="sc"><div className="slb">Spent</div><div className="sv" style={{color:"var(--acc3)"}}>${spent.toFixed(0)}</div><div className="ss">of ${income.toLocaleString()}</div></div>
+              <div className="sc"><div className="slb">Remaining</div><div className="sv" style={{color:remaining<0?"var(--acc3)":"var(--acc2)"}}>${remaining.toFixed(0)}</div><div className="ss">{income>0?Math.round((remaining/income)*100):0}% left</div></div>
+              <div className="sc"><div className="slb">Saveable</div><div className="sv">${Math.max(0,remaining).toFixed(0)}</div><div className="ss">{income>0?Math.max(0,Math.round((remaining/income)*100)):0}% rate</div></div>
+            </div>
+
+            {/* AI Analysis */}
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div className="ctitle" style={{margin:0}}>💡 AI Financial Analysis</div>
+                <button className="btn btnh btnsm" onClick={fetchFinAnalysis} disabled={finLoading}>{finLoading?<span className="spin"/>:"Analyze"}</button>
+              </div>
+              {!finAnalysis&&!finLoading&&<p className="empty">Press "Analyze" for personalized insights based on your current data.</p>}
+              {finAnalysis&&(
+                <>
+                  <div className="abox"><div className="atxt">{finAnalysis.analysis}</div></div>
+                  {finAnalysis.tips&&finAnalysis.tips.map((tip,i)=>(
+                    <div className="trow" key={i}>
+                      <span className="tico">{["💰","📈","🎯"][i]||"💡"}</span>
+                      <span className="ttxt">{tip}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            <div className="g2">
+              <div className="card">
+                <div className="ctitle">Log expense</div>
+                <div className="row">
+                  <input className="inp" placeholder="Description" value={expDesc} onChange={e=>setExpDesc(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addExpense()}/>
+                  <input className="inp" placeholder="$" type="number" min="0" value={expAmt} onChange={e=>setExpAmt(e.target.value)} style={{width:80}} onKeyDown={e=>e.key==="Enter"&&addExpense()}/>
+                </div>
+                <div className="row">
+                  <select className="sel" value={expCat} onChange={e=>setExpCat(e.target.value)} style={{flex:1}}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
+                  <button className="btn" onClick={addExpense}>Add</button>
+                </div>
+                {expenses.length===0&&<p className="empty">No expenses yet.</p>}
+                {expenses.map(e=>(
+                  <div className="fi" key={e.id}>
+                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:500}}>{e.desc}</div><span className="fbdg">{e.cat}</span></div>
+                    <span style={{fontFamily:"var(--mono)",fontSize:12,color:"var(--acc3)",marginRight:8}}>−${e.amount.toFixed(2)}</span>
+                    <button className="del" onClick={()=>setExpenses(p=>p.filter(x=>x.id!==e.id))}>×</button>
+                  </div>
+                ))}
+                {expenses.length>0&&<div style={{paddingTop:10,borderTop:"1px solid var(--border)",fontFamily:"var(--mono)",fontSize:12,color:"var(--muted)"}}>Total: <span style={{color:"var(--acc3)"}}>${spent.toFixed(2)}</span></div>}
+              </div>
+
+              <div className="card">
+                <div className="ctitle">Savings goals</div>
+                <div className="row"><input className="inp" placeholder="Goal name" value={goalName} onChange={e=>setGoalName(e.target.value)}/></div>
+                <div className="row">
+                  <input className="inp" placeholder="Saved $" type="number" min="0" value={goalSaved} onChange={e=>setGoalSaved(e.target.value)}/>
+                  <input className="inp" placeholder="Target $" type="number" min="0" value={goalTarget} onChange={e=>setGoalTarget(e.target.value)}/>
+                </div>
+                <button className="btn btng btnfl" style={{marginBottom:16}} onClick={addGoal}>Set goal</button>
+                {savingsGoals.length===0&&<p className="empty">No goals yet.</p>}
+                {savingsGoals.map(g=>{const p2=Math.min(100,Math.round((g.saved/g.target)*100));return(
+                  <div key={g.id} style={{marginBottom:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
+                      <span style={{fontWeight:500}}>{g.name}</span>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--muted)"}}>${g.saved}/{g.target} · {p2}%</span>
+                        <button className="del" onClick={()=>setSavingsGoals(p=>p.filter(x=>x.id!==g.id))}>×</button>
+                      </div>
+                    </div>
+                    <div className="bw"><div className="bf" style={{width:`${p2}%`,background:"var(--acc2)"}}/></div>
+                  </div>
+                )})}
+                <div style={{borderTop:"1px solid var(--border)",paddingTop:16,marginTop:4}}>
+                  <div className="ctitle">Credit Score</div>
+                  <div style={{marginBottom:10}}>
+                    <span className="crbig">{creditScore}</span>
+                    <span className="crbdg" style={{background:ci.bg,color:ci.color}}>{ci.label}</span>
+                  </div>
+                  <div style={{position:"relative",height:8,background:"linear-gradient(90deg,#ff5f5f,#ffc940,#2de8a0)",borderRadius:4,marginBottom:6,overflow:"visible"}}>
+                    <div style={{position:"absolute",left:`${cpct}%`,top:-4,transform:"translateX(-50%)",width:4,height:16,background:"var(--text)",borderRadius:2,boxShadow:"0 0 6px #fff8"}}/>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontFamily:"var(--mono)",fontSize:10,color:"var(--muted)",marginBottom:14}}><span>300</span><span>580 Fair</span><span>670 Good</span><span>800+</span></div>
+                  <div className="row">
+                    <input className="inp" placeholder="Update score" value={creditInput} type="number" onChange={e=>setCreditInput(e.target.value)}/>
+                    <button className="btn btnh" onClick={()=>{const v=parseInt(creditInput);if(!isNaN(v)&&v>=300&&v<=850){setCreditScore(v)}}}>Update</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── NUTRITION ─── */}
+        {tab==="nutrition"&&(
+          <div className="sec">
+            <div className="slbl">Nutrition & Food Budget</div>
+            <div className="g2" style={{marginBottom:14}}>
+              <div className="card" style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div className="ctitle" style={{alignSelf:"flex-start"}}>Daily Calories</div>
+                <svg width="130" height="130" viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r={R} fill="none" stroke="var(--s3)" strokeWidth="9"/>
+                  <circle cx="60" cy="60" r={R} fill="none" stroke={ringColor} strokeWidth="9"
+                    strokeDasharray={circ} strokeDashoffset={calOffset} strokeLinecap="round"
+                    transform="rotate(-90 60 60)" style={{transition:"stroke-dashoffset .6s ease"}}/>
+                  <text x="60" y="54" textAnchor="middle" fill="var(--text)" fontSize="18" fontWeight="700" fontFamily="Syne,sans-serif">{totalCals}</text>
+                  <text x="60" y="70" textAnchor="middle" fill="var(--muted)" fontSize="10" fontFamily="JetBrains Mono,monospace">/ {DAILY_TARGETS.calories}</text>
+                </svg>
+                <div style={{fontFamily:"var(--mono)",fontSize:11,color:ringColor,marginTop:4,textAlign:"center"}}>
+                  {calPct}% of daily target{calPct>110?" ⚠️ Over!":calPct>85?" ✓ On track":""}
+                </div>
+              </div>
+              <div className="card">
+                <div className="ctitle">Macros</div>
+                {[
+                  {label:"Protein",val:totalProtein,max:DAILY_TARGETS.protein,unit:"g",color:"#3b9eff"},
+                  {label:"Fat",val:totalFat,max:DAILY_TARGETS.fat,unit:"g",color:"#ffc940"},
+                  {label:"Carbs",val:totalCarbs,max:DAILY_TARGETS.carbs,unit:"g",color:"#b07dff"},
+                  {label:"Fiber",val:totalFiber,max:DAILY_TARGETS.fiber,unit:"g",color:"#2de8a0"},
+                ].map(n=>{const p2=pctOf(n.val,n.max);return(
+                  <div className="nr" key={n.label}>
+                    <div className="nh"><span className="nnm">{n.label}</span><span className="nvl">{n.val}{n.unit} / {n.max}{n.unit} ({p2}%)</span></div>
+                    <div className="nbw"><div className="nbf" style={{width:`${Math.min(p2,100)}%`,background:p2>100?"var(--acc3)":n.color}}/></div>
+                  </div>
+                )})}
+              </div>
+            </div>
+
+            {/* Food log */}
+            <div className="card" style={{marginBottom:14}}>
+              <div className="ctitle">Today's Food Log</div>
+              {foods.map(f=>(
+                <div className="fi" key={f.id} style={{opacity:f.logged?1:0.4}}>
+                  <input type="checkbox" checked={f.logged} onChange={()=>toggleFood(f.id)} style={{accentColor:"var(--acc2)",width:16,height:16,flexShrink:0,cursor:"pointer"}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:500}}>{f.name}</div>
+                    <div style={{display:"flex",gap:8,marginTop:3,flexWrap:"wrap"}}>
+                      <span className="fbdg">{f.category}</span>
+                      <span style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--muted)"}}>P:{f.protein||0}g · F:{f.fat||0}g · C:{f.carbs||0}g · Fiber:{f.fiber||0}g</span>
+                    </div>
+                  </div>
+                  <span className="fcal">{f.calories} cal</span>
+                  <span className="fcost">${(f.cost||0).toFixed(2)}</span>
+                  <button className="del" onClick={()=>removeFood(f.id)}>×</button>
+                </div>
+              ))}
+              <div style={{paddingTop:10,borderTop:"1px solid var(--border)",display:"flex",justifyContent:"space-between",fontFamily:"var(--mono)",fontSize:12}}>
+                <span style={{color:"var(--muted)"}}>Today's food cost (logged items):</span>
+                <span style={{color:"var(--acc4)"}}>${loggedFoods.reduce((s,f)=>s+(f.cost||0),0).toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Quick add */}
+            <div className="card" style={{marginBottom:14}}>
+              <div className="ctitle">Quick Add</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>
+                {QUICK_FOODS.map(f=>(
+                  <button key={f.id} className="btn btnh btnsm" onClick={()=>logQuick(f)}>
+                    + {f.name} <span style={{fontFamily:"var(--mono)",fontSize:10,opacity:.6,marginLeft:4}}>{f.calories}cal · ${f.cost}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="ctitle" style={{fontSize:12,marginBottom:10}}>Log custom food</div>
+              <div className="row" style={{flexWrap:"wrap"}}>
+                <input className="inp" placeholder="Name" value={customFood.name} onChange={e=>setCustomFood(p=>({...p,name:e.target.value}))} style={{minWidth:110}}/>
+                <input className="inp" placeholder="Cal" type="number" value={customFood.calories} onChange={e=>setCustomFood(p=>({...p,calories:e.target.value}))} style={{width:68}}/>
+                <input className="inp" placeholder="P(g)" type="number" value={customFood.protein} onChange={e=>setCustomFood(p=>({...p,protein:e.target.value}))} style={{width:62}}/>
+                <input className="inp" placeholder="F(g)" type="number" value={customFood.fat} onChange={e=>setCustomFood(p=>({...p,fat:e.target.value}))} style={{width:62}}/>
+                <input className="inp" placeholder="C(g)" type="number" value={customFood.carbs} onChange={e=>setCustomFood(p=>({...p,carbs:e.target.value}))} style={{width:62}}/>
+                <input className="inp" placeholder="Cost $" type="number" value={customFood.cost} onChange={e=>setCustomFood(p=>({...p,cost:e.target.value}))} style={{width:74}}/>
+                <button className="btn btng" onClick={addCustom}>Log</button>
+              </div>
+            </div>
+
+            {/* Budget breakdown */}
+            <div className="card" style={{marginBottom:14}}>
+              <div className="ctitle">📊 Weekly Food Budget (your current diet)</div>
+              {WEEKLY_BUDGET.map((item,i)=>(
+                <div className="bdgr" key={i}>
+                  <div style={{flex:1}}><div style={{fontSize:13,fontWeight:500}}>{item.item}</div><div className="bdgf">{item.freq}</div></div>
+                  <span className="bdgc">${item.weekly.toFixed(2)}/wk</span>
+                </div>
+              ))}
+              <div style={{display:"flex",justifyContent:"space-between",padding:"14px 0 0",fontWeight:600,fontSize:14,borderTop:"1px solid var(--border)",marginTop:4}}>
+                <span>Weekly total</span>
+                <span style={{fontFamily:"var(--head)",fontSize:22,fontWeight:800,color:"var(--acc3)"}}>${weeklyFoodCost.toFixed(2)}</span>
+              </div>
+              <div style={{marginTop:4,fontFamily:"var(--mono)",fontSize:11,color:"var(--muted)"}}>
+                ≈ ${(weeklyFoodCost*52/12).toFixed(0)}/month · ≈ ${(weeklyFoodCost*52).toFixed(0)}/year
+              </div>
+            </div>
+
+            {/* Budget tips */}
+            <div className="card">
+              <div className="ctitle">🧠 Budget Optimization</div>
+              {BUDGET_TIPS.map((t,i)=>(
+                <div className="trow" key={i}>
+                  <span className="tico">{t.icon}</span>
+                  <span className="ttxt">{t.text}</span>
+                </div>
+              ))}
+              <div style={{marginTop:16,padding:"14px 16px",background:"var(--s2)",borderRadius:10,border:"1px solid var(--border2)"}}>
+                <div style={{fontSize:12,fontWeight:600,color:"var(--acc4)",marginBottom:6,fontFamily:"var(--head)"}}>💰 Optimized scenario: Chipotle 3×/wk + 1 restaurant meal</div>
+                <div style={{fontFamily:"var(--mono)",fontSize:12,color:"var(--muted)"}}>
+                  Save ≈ $86/week · ≈ ${Math.round(86*52/12)}/month · ≈ ${86*52}/year
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── BASEBALL ─── */}
+        {tab==="baseball"&&(
+          <div className="sec">
+            <div className="nyyh">
+              <div className="nyyl">NYY</div>
+              <div>
+                <div className="nyyn">New York Yankees</div>
+                <div className="nyyr">2026 · 1–0 · AL East · Scored 15 runs in last 2 games</div>
+              </div>
+              <div style={{marginLeft:"auto",textAlign:"right"}}>
+                <div style={{fontFamily:"var(--mono)",fontSize:11,color:"#c8a84b"}}>Last 2 results</div>
+                <div style={{fontFamily:"var(--head)",fontSize:16,fontWeight:700}}>W 8–3 · W 7–0</div>
+              </div>
+            </div>
+            <div className="nyyb">
+              <div className="slbl" style={{marginBottom:12}}>Next 3 scheduled games</div>
+              {YANKEES_GAMES.map((g,i)=>{
+                const key=`g${i}`;
+                return(
+                  <div key={i}>
+                    <div className="gr">
+                      <div><div className="gdt">{g.date}</div><div className="gm">{g.matchup}</div></div>
+                      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                        <div className="gt">{g.time}</div>
+                        <button className="lbtn" onClick={()=>fetchLineup(key,g.opponent)} disabled={lineupLoading[key]}>
+                          {lineupLoading[key]?<span className="spin"/>:openLineup[key]?"Hide":"Lineup →"}
+                        </button>
+                      </div>
+                    </div>
+                    {openLineup[key]&&lineups[key]&&(
+                      <div className="lpanel">
+                        <div style={{fontSize:11,color:"var(--acc4)",fontFamily:"var(--mono)",marginBottom:10,letterSpacing:".1em"}}>PROJECTED LINEUP — {g.matchup.toUpperCase()}</div>
+                        {lineups[key].map((p,j)=>(
+                          <div className="lrow" key={j}>
+                            <span className="lnum">{p.order||j+1}.</span>
+                            <span className="lpos">{p.position}</span>
+                            <span>{p.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="slbl">MLB Season Leaders (2025)</div>
+            <div className="lbg">
+              {[
+                {key:"avg",title:"Batting Average",icon:"🏏",color:"#3b9eff"},
+                {key:"war",title:"WAR",icon:"⚡",color:"#b07dff"},
+                {key:"hr",title:"Home Runs",icon:"💣",color:"#ff5f5f"},
+                {key:"era",title:"ERA (Pitchers)",icon:"🎯",color:"#2de8a0"},
+              ].map(cat=>(
+                <div className="lbc" key={cat.key}>
+                  <div className="lbt" style={{color:cat.color}}>{cat.icon} {cat.title}</div>
+                  {MLB_LEADERS[cat.key].map((p,i)=>(
+                    <div className="lbr" key={i}>
+                      <span className="lbrk">{i===0?"🥇":i+1}</span>
+                      <div style={{flex:1}}><div className="lbname">{p.name}</div><div className="lbteam">{p.team}</div></div>
+                      <span className="lbval" style={{color:cat.color}}>{p.val}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── HABITS ─── */}
+        {tab==="habits"&&(
+          <div className="sec">
+            <div className="slbl">Daily Habits</div>
+            <div className="card" style={{marginBottom:14}}>
+              <div style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--muted)",marginBottom:14}}>{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
+              {HABITS.map(h=>(
+                <div className="hr" key={h} onClick={()=>setDoneHabits(p=>({...p,[h]:!p[h]}))}>
+                  <div className={`hc${doneHabits[h]?" on":""}`}>{doneHabits[h]&&<span className="hck">✓</span>}</div>
+                  <span className={`hn${doneHabits[h]?" on":""}`}>{h}</span>
+                  <button className={`hbtn${doneHabits[h]?" on":""}`} onClick={e=>{e.stopPropagation();setDoneHabits(p=>({...p,[h]:!p[h]}))}}>
+                    {doneHabits[h]?"Done ✓":"Mark done"}
+                  </button>
+                </div>
+              ))}
+              <div style={{marginTop:12,fontFamily:"var(--mono)",fontSize:12,color:"var(--muted)"}}>
+                {Object.values(doneHabits).filter(Boolean).length} / {HABITS.length} completed today
+              </div>
+            </div>
+
+            <div className="slbl">Tasks</div>
+            <div className="card" style={{marginBottom:14}}>
+              <div className="row">
+                <input className="inp" placeholder="Add a task..." value={taskInput} onChange={e=>setTaskInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()}/>
+                <button className="btn" onClick={addTask}>Add</button>
+              </div>
+              {tasks.length===0&&<p className="empty">No tasks yet.</p>}
+              {tasks.map(t=>(
+                <div className="tr2" key={t.id}>
+                  <div className={`tc${doneTasks[t.id]?" on":""}`} onClick={()=>setDoneTasks(p=>({...p,[t.id]:!p[t.id]}))}>
+                    {doneTasks[t.id]&&<span style={{color:"#04080f",fontSize:10,fontWeight:800}}>✓</span>}
+                  </div>
+                  <span className={`tl${doneTasks[t.id]?" on":""}`}>{t.label}</span>
+                  <button className="del" onClick={()=>setTasks(p=>p.filter(x=>x.id!==t.id))}>×</button>
+                </div>
+              ))}
+            </div>
+
+            <div className="slbl">Weekly Goals</div>
+            <div className="card">
+              <div className="row">
+                <input className="inp" placeholder="Add a weekly goal..." value={weeklyInput} onChange={e=>setWeeklyInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addWeekly()}/>
+                <button className="btn" onClick={addWeekly}>Add</button>
+              </div>
+              {weeklyGoals.length===0&&<p className="empty">No weekly goals yet.</p>}
+              <div style={{marginTop:6}}>
+                {weeklyGoals.map(g=>(
+                  <span key={g.id} className={`chip${doneGoals[g.id]?" on":""}`} onClick={()=>setDoneGoals(p=>({...p,[g.id]:!p[g.id]}))}>
+                    {g.label}
+                    <span className="chipx" onClick={e=>{e.stopPropagation();setWeeklyGoals(p=>p.filter(x=>x.id!==g.id))}}>×</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── NEWS ─── */}
+        {tab==="news"&&(
+          <div className="sec">
+            <div className="slbl">News</div>
+            <div className="card">
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                <div className="ctitle" style={{margin:0}}>Live Headlines</div>
+                <button className="btn btnh btnsm" onClick={fetchNews} disabled={newsLoading}>{newsLoading?<span className="spin"/>:"Refresh"}</button>
+              </div>
+              {newsError&&<p className="empty">Could not load news. Check your connection.</p>}
+              {!newsError&&news.length===0&&!newsLoading&&<p className="empty">Press Refresh to load live headlines.</p>}
+              {news.map((n,i)=>(
+                <div className="ni" key={i}>
+                  <div className="nhl">{n.headline}</div>
+                  <div className="nm">{n.source} · {n.time}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
